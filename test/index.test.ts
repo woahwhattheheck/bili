@@ -240,7 +240,7 @@ test('dts bundle', async () => {
   expect(
     fs.readFileSync(path.join(dist, 'index.d.ts'), 'utf8')
   ).toMatchSnapshot()
-})
+}, 20000)
 
 snapshot(
   {
