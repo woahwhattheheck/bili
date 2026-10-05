@@ -740,6 +740,8 @@ export class Bundler {
       format: 'es',
     })
     fs.renameSync(tempFile, outputFile)
+    // Preserve completed entry bundles during subsequent cleanup passes.
+    existingDeclarationFiles.add(outputFile)
     for (const file of declarationFiles) {
       fs.unlinkSync(file)
     }
