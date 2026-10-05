@@ -478,7 +478,7 @@ export class Bundler {
       .replace(/\[ext\]/, '.js')
 
     if (modern && !hasModernPlaceholder) {
-      fileName = fileName.replace(/(\.[^./]+)$/, '.modern$1')
+      fileName = fileName.replace(/(\.[^./]+)?$/, '.modern$1')
     }
 
     if (rollupFormat === 'esm') {

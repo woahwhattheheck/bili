@@ -175,7 +175,8 @@ export interface ConfigOutput {
   target?: OutputTarget
   /**
    * Generate an additional modern bundle for browsers with native ES module support.
-   * Modern bundles use Babel's `esmodules` target and append `.modern` to output file names.
+   * Modern bundles use Babel's `esmodules` target and insert `.modern` before the final extension,
+   * or append it when the output file name has no extension.
    * @cli `--modern`
    */
   modern?: boolean
