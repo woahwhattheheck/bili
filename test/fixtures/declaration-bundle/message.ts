@@ -3,5 +3,7 @@ export interface Message {
 }
 
 export function createMessage(value: string): Message {
-  return { value }
+  const ambient: AmbientMessage = { label: value }
+  const automatic: AutoIncludedMessage = { enabled: true }
+  return { value: automatic.enabled ? ambient.label : value }
 }
