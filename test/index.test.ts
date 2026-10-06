@@ -236,6 +236,27 @@ test('dts keeps an earlier declaration bundle intact', async () => {
   expect(fs.readFileSync(file, 'utf8')).toBe(before)
 }, 20000)
 
+test('dts rebuild refreshes stale declarations from a previous output', async () => {
+  const cwd = fixture('declaration-bundle')
+  const dist = path.join(cwd, 'dist')
+  removeDir(dist)
+  fs.mkdirSync(dist)
+  fs.writeFileSync(path.join(dist, 'index.d.ts'), 'export declare const staleDeclaration: true\n')
+
+  const bundler = new Bundler(
+    { input: 'index.ts', output: { dir: dist, dts: true } },
+    { rootDir: cwd, configFile: false, logLevel: 'quiet' }
+  )
+  ;(bundler as any).build = async () => undefined
+
+  await bundler.run({ write: true })
+
+  const declaration = fs.readFileSync(path.join(dist, 'index.d.ts'), 'utf8')
+  expect(declaration).not.toContain('staleDeclaration')
+  expect(declaration).toContain('interface Message')
+  expect(declaration).toContain('createMessage')
+}, 20000)
+
 test('dts bundle', async () => {
   const cwd = fixture('declaration-bundle')
   const dist = path.join(cwd, 'dist')
