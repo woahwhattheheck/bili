@@ -713,7 +713,7 @@ export class Bundler {
     existingDeclarationFiles = new Set<string>()
   ) {
     const outputDir = path.resolve(this.config.output.dir || 'dist')
-    this.emitDtsFiles(source, outputDir)
+    this.emitDtsFiles(source, outputDir, existingDeclarationFiles)
     const sourceFile = getSingleDeclarationSource(source)
     const inputFile = findDeclarationFile(outputDir, sourceFile)
     if (!inputFile) {
@@ -758,10 +758,15 @@ export class Bundler {
     await printAssets(assets, 'Bundled declaration')
   }
 
-  emitDtsFiles(source: SourceMeta, outputDir: string) {
+  emitDtsFiles(
+    source: SourceMeta,
+    outputDir: string,
+    existingDeclarationFiles = new Set<string>()
+  ) {
     const ts = this.localRequire('typescript')
     const tsconfig = path.join(this.rootDir, 'tsconfig.json')
     let compilerOptions: { [key: string]: any } = {}
+    let rootFileNames: string[] = []
     if (fs.existsSync(tsconfig)) {
       const tsconfigJson = ts.readConfigFile(tsconfig, ts.sys.readFile)
       if (tsconfigJson.error) {
@@ -780,6 +785,7 @@ export class Bundler {
         )
       }
       compilerOptions = parsedTsconfig.options
+      rootFileNames = parsedTsconfig.fileNames
     }
 
     compilerOptions = {
@@ -806,15 +812,13 @@ export class Bundler {
         compilerOptions.target === undefined
           ? ts.ScriptTarget.ES2017
           : compilerOptions.target,
-      types: compilerOptions.types === undefined ? [] : compilerOptions.types,
     }
 
+    const entryFile = this.resolveRootDir(
+      stripRelativePrefix(getSingleDeclarationSource(source))
+    )
     const program = ts.createProgram(
-      [
-        this.resolveRootDir(
-          stripRelativePrefix(getSingleDeclarationSource(source))
-        ),
-      ],
+      Array.from(new Set([...rootFileNames, entryFile])),
       compilerOptions
     )
     const diagnostics = ts
@@ -832,8 +836,12 @@ export class Bundler {
         if (!fileName.endsWith('.d.ts')) {
           return
         }
-        ensureDir(path.dirname(fileName))
-        fs.writeFileSync(fileName, content)
+        const absoluteFileName = path.resolve(fileName)
+        if (existingDeclarationFiles.has(absoluteFileName)) {
+          return
+        }
+        ensureDir(path.dirname(absoluteFileName))
+        fs.writeFileSync(absoluteFileName, content)
       },
       undefined,
       false
