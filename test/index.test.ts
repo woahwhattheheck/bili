@@ -214,6 +214,28 @@ snapshot({
   cwd: fixture('typescript'),
 })
 
+test('dts keeps an earlier declaration bundle intact', async () => {
+  const cwd = fixture('declaration-bundle')
+  const dist = path.join(cwd, 'dist')
+  removeDir(dist)
+  const bundler = new Bundler(
+    { input: 'index.ts', output: { dir: dist, dts: true } },
+    { rootDir: cwd, configFile: false, logLevel: 'quiet' }
+  )
+  const kept = new Set<string>()
+  await bundler.buildDtsBundle(
+    { input: ['message.ts'], files: ['message.ts'], hasVue: false, hasTs: true } as any,
+    kept
+  )
+  const file = path.join(dist, 'message.d.ts')
+  const before = fs.readFileSync(file, 'utf8')
+  await bundler.buildDtsBundle(
+    { input: ['index.ts'], files: ['index.ts', 'message.ts'], hasVue: false, hasTs: true } as any,
+    kept
+  )
+  expect(fs.readFileSync(file, 'utf8')).toBe(before)
+}, 20000)
+
 test('dts bundle', async () => {
   const cwd = fixture('declaration-bundle')
   const dist = path.join(cwd, 'dist')
