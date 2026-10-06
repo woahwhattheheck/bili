@@ -257,6 +257,34 @@ test('dts rebuild refreshes stale declarations from a previous output', async ()
   expect(declaration).toContain('createMessage')
 }, 20000)
 
+test('dts bundle selects the declaration emitted for a nested entry', async () => {
+  const cwd = fixture('declaration-bundle')
+  const dist = path.join(cwd, 'dist')
+  removeDir(dist)
+  await generate(
+    {
+      input: 'nested/index.ts',
+      output: {
+        dir: dist,
+        dts: true,
+      },
+      resolvePlugins: {
+        typescript2: require('rollup-plugin-typescript2'),
+      },
+    },
+    {
+      rootDir: cwd,
+    },
+    {
+      write: true,
+    }
+  )
+
+  const declaration = fs.readFileSync(path.join(dist, 'index.d.ts'), 'utf8')
+  expect(declaration).toContain('interface NestedMessage')
+  expect(declaration).not.toContain('createMessage')
+}, 20000)
+
 test('dts bundle', async () => {
   const cwd = fixture('declaration-bundle')
   const dist = path.join(cwd, 'dist')
