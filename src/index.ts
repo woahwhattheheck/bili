@@ -584,11 +584,9 @@ export class Bundler {
     const declarationSources = sources.filter(
       (source) => source.hasTs && this.config.output.dts
     )
-    const existingDeclarationFiles = new Set(
-      declarationSources.length > 0
-        ? findDeclarationFiles(path.resolve(this.config.output.dir || 'dist'))
-        : []
-    )
+    // Protect only declaration bundles completed during this run. Files
+    // inherited from an earlier build must be regenerated from current source.
+    const existingDeclarationFiles = new Set<string>()
 
     let { format, target } = this.config.output
     if (Array.isArray(format)) {
