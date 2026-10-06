@@ -711,9 +711,12 @@ export class Bundler {
     existingDeclarationFiles = new Set<string>()
   ) {
     const outputDir = path.resolve(this.config.output.dir || 'dist')
-    this.emitDtsFiles(source, outputDir, existingDeclarationFiles)
     const sourceFile = getSingleDeclarationSource(source)
-    const inputFile = findDeclarationFile(outputDir, sourceFile)
+    const inputFile = this.emitDtsFiles(
+      source,
+      outputDir,
+      existingDeclarationFiles
+    )
     if (!inputFile) {
       throw new Error(`Declaration file for "${sourceFile}" was not emitted`)
     }
@@ -828,13 +831,28 @@ export class Bundler {
       throw new Error(formatTsDiagnostics(ts, diagnostics, this.rootDir))
     }
 
+    let entryDeclarationFile: string | undefined
     const result = program.emit(
       undefined,
-      (fileName: string, content: string) => {
+      (
+        fileName: string,
+        content: string,
+        _writeByteOrderMark: boolean,
+        _onError?: (message: string) => void,
+        sourceFiles?: readonly any[]
+      ) => {
         if (!fileName.endsWith('.d.ts')) {
           return
         }
         const absoluteFileName = path.resolve(fileName)
+        if (
+          sourceFiles &&
+          sourceFiles.some(
+            (sourceFile) => path.resolve(sourceFile.fileName) === entryFile
+          )
+        ) {
+          entryDeclarationFile = absoluteFileName
+        }
         if (existingDeclarationFiles.has(absoluteFileName)) {
           return
         }
@@ -849,6 +867,7 @@ export class Bundler {
         formatTsDiagnostics(ts, result.diagnostics || [], this.rootDir)
       )
     }
+    return entryDeclarationFile
   }
 
   handleError(err: any) {
@@ -940,18 +959,6 @@ function getDtsFileName(
 
 function stripRelativePrefix(file: string) {
   return file.replace(/^\.\//, '')
-}
-
-function findDeclarationFile(outputDir: string, sourceFile: string) {
-  const fileName = getDtsFileName(true, sourceFile)
-  const direct = path.resolve(outputDir, fileName)
-  if (fs.existsSync(direct)) {
-    return direct
-  }
-
-  return findDeclarationFiles(outputDir).find(
-    (file) => path.basename(file) === fileName
-  )
 }
 
 function findDeclarationFiles(dir: string): string[] {
