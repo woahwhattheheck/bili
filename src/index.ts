@@ -160,13 +160,13 @@ export class Bundler {
     assets,
     config,
   }: RollupConfigInput): Promise<RollupConfig> {
+    config = merge({}, config, {
+      babel: {
+        modern,
+      },
+    })
     if (modern) {
-      config = merge({}, config, {
-        babel: {
-          asyncToPromises: false,
-          modern: true,
-        },
-      })
+      config.babel.asyncToPromises = false
     }
 
     // Always minify if config.minify is truthy
@@ -469,6 +469,7 @@ export class Bundler {
         ? getFileName({ format: rollupFormat, minify, modern }, defaultFileName)
         : getFileName
     const hasModernPlaceholder = fileNameTemplate.includes('[modern]')
+    const customFileName = typeof getFileName === 'function'
     let fileName = fileNameTemplate
       .replace(/\[modern\]/, modern ? '.modern' : '')
       .replace(/\[min\]/, minPlaceholder)
@@ -477,7 +478,7 @@ export class Bundler {
       // Probably remove it in the future
       .replace(/\[ext\]/, '.js')
 
-    if (modern && !hasModernPlaceholder) {
+    if (modern && !hasModernPlaceholder && !customFileName) {
       fileName = fileName.replace(/(\.[^./]+)?$/, '.modern$1')
     }
 
