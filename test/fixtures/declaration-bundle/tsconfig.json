@@ -5,5 +5,5 @@
     "moduleResolution": "node",
     "strict": true
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "nested/*.ts"]
 }
