@@ -1,0 +1,3 @@
+interface AmbientMessage {
+  label: string
+}
