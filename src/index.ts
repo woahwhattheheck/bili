@@ -654,6 +654,10 @@ export class Bundler {
       watcher.on('event', (e) => {
         if (isRollupErrorEvent(e)) {
           logger.error(e.error.message)
+          if (e.code === 'FATAL') {
+            watcher.close()
+            process.exitCode = 1
+          }
         }
       })
     } else {
