@@ -23,17 +23,21 @@ function createBundler() {
 describe('watch mode', () => {
   beforeEach(() => {
     mockWatch.mockReset()
+    process.exitCode = undefined
     jest.spyOn(logger, 'error').mockImplementation(() => {})
   })
 
   afterEach(() => {
+    process.exitCode = undefined
     jest.restoreAllMocks()
   })
 
-  it('logs fatal Rollup watch events', async () => {
+  it('logs fatal Rollup watch events and shuts down the watcher', async () => {
     const error = new Error('watch failed')
+    const close = jest.fn()
 
     mockWatch.mockReturnValue({
+      close,
       on(_event: string, listener: (payload: any) => void) {
         listener({ code: 'FATAL', error })
       },
@@ -42,6 +46,8 @@ describe('watch mode', () => {
     await createBundler().run({ watch: true })
 
     expect(logger.error).toHaveBeenCalledWith('watch failed')
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(process.exitCode).toBe(1)
   })
 
   it('keeps logging normal Rollup watch errors', async () => {
