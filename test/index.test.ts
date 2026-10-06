@@ -298,3 +298,62 @@ snapshot(
     env: { NODE_ENV: 'production' },
   }
 )
+
+test('modern: custom fileName function owns modern naming', async () => {
+  const { bundles } = await generate(
+    {
+      input: 'index.js',
+      output: {
+        format: 'esm',
+        modern: true,
+        fileName: ({ modern }) =>
+          modern ? '[name].modern-custom.js' : '[name].legacy.js',
+      },
+    },
+    {
+      rootDir: fixture('modern'),
+    }
+  )
+
+  const names: string[] = []
+  for (const bundle of bundles) {
+    for (const relative of bundle.keys()) {
+      names.push(path.basename(relative))
+    }
+  }
+
+  expect(names.sort()).toEqual(['index.legacy.js', 'index.modern-custom.js'])
+})
+
+test('modern: concurrent legacy and modern transforms stay isolated', async () => {
+  const bundler = new Bundler(
+    {
+      input: 'index.js',
+      output: {
+        format: 'esm',
+        modern: true,
+      },
+    },
+    {
+      rootDir: fixture('modern'),
+      logLevel: 'quiet',
+      configFile: false,
+    }
+  )
+
+  await bundler.run({ concurrent: true })
+
+  const sources: string[] = []
+  for (const bundle of bundler.bundles) {
+    for (const asset of bundle.values()) {
+      sources.push(asset.source)
+    }
+  }
+
+  expect(sources).toHaveLength(2)
+  expect(sources.filter((source) => source.includes('function _await')).length).toBe(1)
+  expect(
+    sources.filter((source) => source.includes('async value => await value')).length
+  ).toBe(1)
+})
+
