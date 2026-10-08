@@ -653,17 +653,27 @@ export class Bundler {
         })
       )
       const watcher = watch(configs)
+      let stopping = false
       watcher.on('event', (e) => {
-        const fatal = (e as { code?: string }).code === 'FATAL'
+        const fatal =
+          e != null && (e as { code?: string }).code === 'FATAL'
         if (isRollupErrorEvent(e)) {
           logger.error(e.error.message)
         } else if (fatal) {
           // A malformed FATAL event must still stop watch mode.
           logger.error('Rollup watcher stopped without error details')
         }
-        if (fatal) {
+        if (fatal && !stopping) {
+          stopping = true
+          // Even if closing throws or rejects, this process must report failure.
           process.exitCode = 1
-          watcher.close()
+          try {
+            Promise.resolve(watcher.close()).catch(() => {
+              logger.error('Rollup watcher cleanup failed')
+            })
+          } catch (_error) {
+            logger.error('Rollup watcher cleanup failed')
+          }
         }
       })
     } else {
