@@ -77,3 +77,43 @@ test('two declaration entries cannot overwrite the same named bundle', async () 
     removeTree(dist)
   }
 }, 20000)
+
+
+test('failed declaration publication preserves the previous bundle', async () => {
+  const cwd = path.join(__dirname, 'fixtures', 'declaration-bundle')
+  const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-dts-rollback-'))
+  const output = path.join(dist, 'index.d.ts')
+  const previous = '// last successfully published declaration bundle\n'
+  fs.writeFileSync(output, previous)
+  const bundler = new Bundler(
+    { input: 'index.ts', output: { dir: dist, dts: true } },
+    { rootDir: cwd, configFile: false, logLevel: 'quiet' }
+  )
+  const source = {
+    input: ['index.ts'],
+    files: ['index.ts', 'message.ts'],
+    hasTs: true,
+    hasVue: false,
+  } as any
+
+  // Fail exactly at the final publication boundary, after TypeScript emit
+  // and Rollup output, to exercise atomic rollback rather than typechecking.
+  const rename = jest.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+    throw new Error('simulated declaration publication failure')
+  })
+  try {
+    await expect(bundler.buildDtsBundle(source)).rejects.toThrow(
+      'simulated declaration publication failure'
+    )
+  } finally {
+    rename.mockRestore()
+  }
+
+  try {
+    expect(fs.readFileSync(output, 'utf8')).toBe(previous)
+    expect(fs.existsSync(`${output}.tmp`)).toBe(false)
+    expect(fs.existsSync(path.join(dist, 'message.d.ts'))).toBe(false)
+  } finally {
+    removeTree(dist)
+  }
+}, 20000)
