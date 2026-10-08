@@ -640,13 +640,45 @@ export class Bundler {
       }
     }
 
+    // A modern build schedules paired legacy/modern tasks. Resolve both
+    // output configs before running *either* build/watch: a custom fileName
+    // callback may ignore its modern argument, causing two tasks to write
+    // the very same destination (including under concurrent mode).
+    // Reuse these configs rather than invoking user hooks a second time.
+    const preparedConfigs: RollupConfig[] | undefined = this.config.output.modern
+      ? await Promise.all(tasks.map((task) => task.getConfig(context, task)))
+      : undefined
+
+    if (preparedConfigs) {
+      const targetPath = ({ outputConfig }: RollupConfig): string => {
+        if (typeof outputConfig.file === 'string') {
+          return path.resolve(outputConfig.file)
+        }
+        if (typeof outputConfig.entryFileNames !== 'string') {
+          throw new Error('Modern output requires a resolved filename to verify distinct legacy/modern artifacts')
+        }
+        return path.resolve(outputConfig.dir, outputConfig.entryFileNames)
+      }
+      const samePath = (a: string, b: string): boolean =>
+        process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
+
+      for (let i = 0; i < preparedConfigs.length; i += 2) {
+        const legacyTarget = targetPath(preparedConfigs[i])
+        const modernTarget = targetPath(preparedConfigs[i + 1])
+        if (samePath(legacyTarget, modernTarget)) {
+          throw new Error(
+            `Modern and legacy bundles resolve to the same output file: ${legacyTarget}. ` +
+            'Include [modern] in output.fileName or return distinct names for both builds.'
+          )
+        }
+      }
+    }
+
     if (options.watch) {
       const configs = await Promise.all(
-        tasks.map(async (task) => {
-          const { inputConfig, outputConfig } = await task.getConfig(
-            context,
-            task
-          )
+        tasks.map(async (task, index) => {
+          const { inputConfig, outputConfig } =
+            preparedConfigs?.[index] || (await task.getConfig(context, task))
           return {
             ...inputConfig,
             output: outputConfig,
@@ -664,14 +696,14 @@ export class Bundler {
       try {
         if (options.concurrent) {
           await Promise.all(
-            tasks.map((task) => {
-              return this.build(task, context, options.write)
+            tasks.map((task, index) => {
+              return this.build(task, context, options.write, preparedConfigs?.[index])
             })
           )
         } else {
           await waterfall(
-            tasks.map((task) => () => {
-              return this.build(task, context, options.write)
+            tasks.map((task, index) => () => {
+              return this.build(task, context, options.write, preparedConfigs?.[index])
             }),
             context
           )
@@ -685,9 +717,10 @@ export class Bundler {
     return this
   }
 
-  async build(task: Task, context: RunContext, write?: boolean) {
+  async build(task: Task, context: RunContext, write?: boolean, preparedConfig?: RollupConfig) {
     try {
-      const { inputConfig, outputConfig } = await task.getConfig(context, task)
+      const { inputConfig, outputConfig } =
+        preparedConfig || (await task.getConfig(context, task))
       const bundle = await rollup(inputConfig)
       if (write) {
         await bundle.write(outputConfig)
