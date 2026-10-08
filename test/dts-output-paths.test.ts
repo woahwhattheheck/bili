@@ -49,3 +49,31 @@ test('dts output supports nested names and refuses paths outside output.dir', as
     removeTree(dist)
   }
 }, 20000)
+
+test('two declaration entries cannot overwrite the same named bundle', async () => {
+  const cwd = path.join(__dirname, 'fixtures', 'declaration-bundle')
+  const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-dts-collision-'))
+  const bundler = new Bundler(
+    { input: 'index.ts', output: { dir: dist, dts: true } },
+    { rootDir: cwd, configFile: false, logLevel: 'quiet' }
+  )
+  const completed = new Set<string>()
+
+  try {
+    await bundler.buildDtsBundle(
+      { input: ['index.ts'], files: ['index.ts'], hasTs: true, hasVue: false } as any,
+      completed
+    )
+    const output = path.join(dist, 'index.d.ts')
+    const firstBundle = fs.readFileSync(output, 'utf8')
+    expect(firstBundle).toContain('createMessage')
+
+    await expect(bundler.buildDtsBundle(
+      { input: ['nested/index.ts'], files: ['nested/index.ts'], hasTs: true, hasVue: false } as any,
+      completed
+    )).rejects.toThrow('Multiple declaration entries target the same output')
+    expect(fs.readFileSync(output, 'utf8')).toBe(firstBundle)
+  } finally {
+    removeTree(dist)
+  }
+}, 20000)
