@@ -1,4 +1,6 @@
 import path from 'path'
+import fs from 'fs'
+import os from 'os'
 import { Bundler, Config, Options } from '../src'
 
 process.env.BABEL_ENV = 'anything-not-test'
@@ -323,6 +325,37 @@ test('modern: custom fileName function owns modern naming', async () => {
   }
 
   expect(names.sort()).toEqual(['index.legacy.js', 'index.modern-custom.js'])
+})
+
+test('modern: custom naming collision fails before either variant writes', async () => {
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-modern-collision-'))
+  try {
+    const bundler = new Bundler(
+      {
+        input: 'index.js',
+        output: {
+          dir: outputDir,
+          format: 'esm',
+          modern: true,
+          // A callback may ignore modern and return the same artifact path.
+          fileName: () => '[name].shared.js',
+        },
+      },
+      {
+        rootDir: fixture('modern'),
+        logLevel: 'quiet',
+        configFile: false,
+      }
+    )
+
+    await expect(bundler.run({ concurrent: true, write: true })).rejects.toThrow(
+      /modern and legacy bundles resolve to the same output file/i
+    )
+    // The error is a preflight failure; neither version was published.
+    expect(fs.readdirSync(outputDir)).toEqual([])
+  } finally {
+    fs.rmdirSync(outputDir, { recursive: true })
+  }
 })
 
 test('modern: concurrent legacy and modern transforms stay isolated', async () => {
