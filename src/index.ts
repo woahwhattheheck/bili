@@ -712,7 +712,7 @@ export class Bundler {
   ) {
     const outputDir = path.resolve(this.config.output.dir || 'dist')
     const sourceFile = getSingleDeclarationSource(source)
-    const inputFile = this.emitDtsFiles(
+    const { inputFile, emittedFiles } = this.emitDtsFiles(
       source,
       outputDir,
       existingDeclarationFiles
@@ -726,7 +726,9 @@ export class Bundler {
       getDtsFileName(this.config.output.dts, sourceFile)
     )
     const tempFile = `${outputFile}.tmp`
-    const declarationFiles = findDeclarationFiles(outputDir).filter(
+    // Cleanup only files this TypeScript emit actually wrote. A pre-existing,
+    // hand-maintained declaration in dist is not an intermediate build artifact.
+    const declarationFiles = emittedFiles.filter(
       (file) =>
         !existingDeclarationFiles.has(file) &&
         file !== outputFile &&
@@ -832,6 +834,7 @@ export class Bundler {
     }
 
     let entryDeclarationFile: string | undefined
+    const emittedFiles: string[] = []
     const result = program.emit(
       undefined,
       (
@@ -858,6 +861,7 @@ export class Bundler {
         }
         ensureDir(path.dirname(absoluteFileName))
         fs.writeFileSync(absoluteFileName, content)
+        emittedFiles.push(absoluteFileName)
       },
       undefined,
       false
@@ -867,7 +871,7 @@ export class Bundler {
         formatTsDiagnostics(ts, result.diagnostics || [], this.rootDir)
       )
     }
-    return entryDeclarationFile
+    return { inputFile: entryDeclarationFile, emittedFiles }
   }
 
   handleError(err: any) {
@@ -959,23 +963,6 @@ function getDtsFileName(
 
 function stripRelativePrefix(file: string) {
   return file.replace(/^\.\//, '')
-}
-
-function findDeclarationFiles(dir: string): string[] {
-  if (!fs.existsSync(dir)) {
-    return []
-  }
-
-  return fs.readdirSync(dir).reduce((files: string[], name) => {
-    const file = path.join(dir, name)
-    if (fs.statSync(file).isDirectory()) {
-      return files.concat(findDeclarationFiles(file))
-    }
-    if (file.endsWith('.d.ts')) {
-      files.push(file)
-    }
-    return files
-  }, [])
 }
 
 function ensureDir(dir: string) {
