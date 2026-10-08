@@ -727,6 +727,14 @@ export class Bundler {
     ) {
       throw new Error('output.dts must stay within output.dir')
     }
+    // This set also tracks destinations completed by earlier entries in the
+    // same build. Two entries named index.ts must not silently overwrite
+    // each other's index.d.ts bundle.
+    if (existingDeclarationFiles.has(outputFile)) {
+      throw new Error(
+        `Multiple declaration entries target the same output: ${outputFile}`
+      )
+    }
 
     const { inputFile, emittedFiles } = this.emitDtsFiles(
       source,
