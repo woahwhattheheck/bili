@@ -712,6 +712,22 @@ export class Bundler {
   ) {
     const outputDir = path.resolve(this.config.output.dir || 'dist')
     const sourceFile = getSingleDeclarationSource(source)
+    const outputFile = path.resolve(
+      outputDir,
+      getDtsFileName(this.config.output.dts, sourceFile)
+    )
+    // A declaration bundle is an output artifact, not an arbitrary filesystem
+    // write target. Nested file names are supported inside the output folder.
+    const outputRelative = path.relative(outputDir, outputFile)
+    if (
+      !outputRelative ||
+      outputRelative === '..' ||
+      outputRelative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(outputRelative)
+    ) {
+      throw new Error('output.dts must stay within output.dir')
+    }
+
     const { inputFile, emittedFiles } = this.emitDtsFiles(
       source,
       outputDir,
@@ -721,10 +737,6 @@ export class Bundler {
       throw new Error(`Declaration file for "${sourceFile}" was not emitted`)
     }
 
-    const outputFile = path.resolve(
-      outputDir,
-      getDtsFileName(this.config.output.dts, sourceFile)
-    )
     const tempFile = `${outputFile}.tmp`
     // Cleanup only files this TypeScript emit actually wrote. A pre-existing,
     // hand-maintained declaration in dist is not an intermediate build artifact.
@@ -734,15 +746,28 @@ export class Bundler {
         file !== outputFile &&
         file !== tempFile
     )
+    ensureDir(path.dirname(outputFile))
     const bundle = await rollup({
       input: inputFile,
       plugins: [dts()],
     })
-    await bundle.write({
-      file: tempFile,
-      format: 'es',
-    })
-    fs.renameSync(tempFile, outputFile)
+    try {
+      await bundle.write({
+        file: tempFile,
+        format: 'es',
+      })
+      fs.renameSync(tempFile, outputFile)
+    } catch (error) {
+      // Failed writes must not strand a partial bundle beside the output.
+      if (fs.existsSync(tempFile)) {
+        try {
+          fs.unlinkSync(tempFile)
+        } catch {
+          // Preserve the build failure rather than replacing it with a cleanup error.
+        }
+      }
+      throw error
+    }
     // Preserve completed entry bundles during subsequent cleanup passes.
     existingDeclarationFiles.add(outputFile)
     for (const file of declarationFiles) {
