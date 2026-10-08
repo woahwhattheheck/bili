@@ -1,6 +1,7 @@
 import './polyfills'
 import path from 'path'
 import fs from 'fs'
+import os from 'os'
 import colors from 'chalk'
 import prettyBytes from 'pretty-bytes'
 import formatTime from 'pretty-ms'
@@ -736,52 +737,43 @@ export class Bundler {
       )
     }
 
-    const { inputFile, emittedFiles } = this.emitDtsFiles(
-      source,
-      outputDir,
-      existingDeclarationFiles
-    )
-    if (!inputFile) {
-      throw new Error(`Declaration file for "${sourceFile}" was not emitted`)
-    }
-
+    // Isolate TypeScript's intermediate declarations until Rollup succeeds.
+    // Writing them directly to output.dir can replace a previously valid
+    // bundle even when compilation or Rollup fails.
+    const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-dts-'))
     const tempFile = `${outputFile}.tmp`
-    // Cleanup only files this TypeScript emit actually wrote. A pre-existing,
-    // hand-maintained declaration in dist is not an intermediate build artifact.
-    const declarationFiles = emittedFiles.filter(
-      (file) =>
-        !existingDeclarationFiles.has(file) &&
-        file !== outputFile &&
-        file !== tempFile
-    )
-    ensureDir(path.dirname(outputFile))
-    const bundle = await rollup({
-      input: inputFile,
-      plugins: [dts()],
-    })
+    let published = false
     try {
+      const { inputFile } = this.emitDtsFiles(source, stagingDir)
+      if (!inputFile) {
+        throw new Error(`Declaration file for "${sourceFile}" was not emitted`)
+      }
+
+      ensureDir(path.dirname(outputFile))
+      const bundle = await rollup({
+        input: inputFile,
+        plugins: [dts()],
+      })
       await bundle.write({
         file: tempFile,
         format: 'es',
       })
       fs.renameSync(tempFile, outputFile)
-    } catch (error) {
-      // Failed writes must not strand a partial bundle beside the output.
-      if (fs.existsSync(tempFile)) {
+      published = true
+    } finally {
+      // A failed emit, Rollup construction, write, or rename must leave the
+      // previous declaration bundle untouched and no temporary output behind.
+      if (!published && fs.existsSync(tempFile)) {
         try {
           fs.unlinkSync(tempFile)
         } catch {
-          // Preserve the build failure rather than replacing it with a cleanup error.
+          // Preserve the original build failure.
         }
       }
-      throw error
-    }
-    // Preserve completed entry bundles during subsequent cleanup passes.
-    existingDeclarationFiles.add(outputFile)
-    for (const file of declarationFiles) {
-      fs.unlinkSync(file)
+      removeDtsStage(stagingDir)
     }
 
+    existingDeclarationFiles.add(outputFile)
     const relative = path.relative(process.cwd(), outputFile)
     const assets: Assets = new Map()
     assets.set(relative, {
@@ -935,6 +927,17 @@ export class Bundler {
   }
 }
 
+function removeDtsStage(dir: string) {
+  for (const name of fs.readdirSync(dir)) {
+    const file = path.join(dir, name)
+    if (fs.lstatSync(file).isDirectory()) {
+      removeDtsStage(file)
+    } else {
+      fs.unlinkSync(file)
+    }
+  }
+  fs.rmdirSync(dir)
+}
 interface Asset {
   absolute: string
   source: string
