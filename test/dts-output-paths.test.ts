@@ -117,3 +117,47 @@ test('failed declaration publication preserves the previous bundle', async () =>
     removeTree(dist)
   }
 }, 20000)
+
+test('project-local alias and package type resolution survive declaration staging', async () => {
+  const cwd = fs.mkdtempSync(path.join(__dirname, 'fixtures', 'bili-dts-resolution-'))
+  const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-dts-resolution-output-'))
+  const src = path.join(cwd, 'src')
+  const dependency = path.join(cwd, 'node_modules', 'typed-package')
+  fs.mkdirSync(src, { recursive: true })
+  fs.mkdirSync(dependency, { recursive: true })
+  fs.writeFileSync(path.join(cwd, 'tsconfig.json'), JSON.stringify({
+    compilerOptions: {
+      baseUrl: '.',
+      paths: { '@project/*': ['src/*'] },
+      module: 'esnext', moduleResolution: 'node', target: 'es2017',
+    },
+    include: ['src/**/*.ts'],
+  }))
+  fs.writeFileSync(path.join(src, 'model.ts'), 'export interface Model { modelId: string }\n')
+  fs.writeFileSync(path.join(dependency, 'package.json'), JSON.stringify({ types: 'index.d.ts' }))
+  fs.writeFileSync(path.join(dependency, 'index.d.ts'), 'export interface Dependency { enabled: boolean }\n')
+  fs.writeFileSync(path.join(src, 'index.ts'), [
+    "import type { Model } from '@project/model'",
+    "import type { Dependency } from 'typed-package'",
+    'export interface PublicContract extends Model, Dependency {}',
+  ].join('\n'))
+  const bundler = new Bundler(
+    { input: 'src/index.ts', output: { dir: dist, dts: true } },
+    { rootDir: cwd, configFile: false, logLevel: 'quiet' }
+  )
+  try {
+    await bundler.buildDtsBundle({
+      input: ['src/index.ts'], files: ['src/index.ts', 'src/model.ts'],
+      hasTs: true, hasVue: false,
+    } as any)
+    const bundled = fs.readFileSync(path.join(dist, 'index.d.ts'), 'utf8')
+    expect(bundled).toContain('PublicContract')
+    expect(bundled).toContain('modelId')
+    expect(bundled).toContain('enabled')
+    expect(bundled).not.toContain('@project/model')
+    expect(fs.readdirSync(cwd).filter((name) => name.startsWith('.bili-dts-'))).toHaveLength(0)
+  } finally {
+    removeTree(dist)
+    removeTree(cwd)
+  }
+}, 20000)
