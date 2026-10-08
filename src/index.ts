@@ -1,7 +1,6 @@
 import './polyfills'
 import path from 'path'
 import fs from 'fs'
-import os from 'os'
 import colors from 'chalk'
 import prettyBytes from 'pretty-bytes'
 import formatTime from 'pretty-ms'
@@ -740,7 +739,10 @@ export class Bundler {
     // Isolate TypeScript's intermediate declarations until Rollup succeeds.
     // Writing them directly to output.dir can replace a previously valid
     // bundle even when compilation or Rollup fails.
-    const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-dts-'))
+    // Keep the emit stage below the TypeScript project root so rollup-plugin-dts
+    // can resolve tsconfig paths and packages from this project's node_modules.
+    // A unique stage still prevents partial emits from touching published output.
+    const stagingDir = fs.mkdtempSync(path.join(this.rootDir, '.bili-dts-'))
     const tempFile = `${outputFile}.tmp`
     let published = false
     try {
