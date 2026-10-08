@@ -68,6 +68,43 @@ describe('watch mode', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it('keeps the failed exit status if watcher close throws synchronously', async () => {
+    const close = jest.fn(() => {
+      throw new Error('close failed')
+    })
+    mockWatch.mockReturnValue({
+      close,
+      on(_event: string, listener: (payload: any) => void) {
+        listener({ code: 'FATAL', error: new Error('fatal build') })
+      },
+    })
+
+    await createBundler().run({ watch: true })
+
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(process.exitCode).toBe(1)
+    expect(logger.error).toHaveBeenCalledWith('fatal build')
+    expect(logger.error).toHaveBeenCalledWith('Rollup watcher cleanup failed')
+  })
+
+  it('handles rejected close and shuts down only once for repeated fatal events', async () => {
+    const close = jest.fn(() => Promise.reject(new Error('close failed')))
+    mockWatch.mockReturnValue({
+      close,
+      on(_event: string, listener: (payload: any) => void) {
+        listener({ code: 'FATAL', error: new Error('fatal build') })
+        listener({ code: 'FATAL', error: new Error('fatal build again') })
+      },
+    })
+
+    await createBundler().run({ watch: true })
+    await Promise.resolve()
+
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(process.exitCode).toBe(1)
+    expect(logger.error).toHaveBeenCalledWith('Rollup watcher cleanup failed')
+  })
+
   it('keeps logging normal Rollup watch errors', async () => {
     const error = new Error('build failed')
 
