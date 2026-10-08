@@ -50,6 +50,24 @@ describe('watch mode', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it('closes on a malformed fatal event without dereferencing a missing error', async () => {
+    const close = jest.fn()
+    mockWatch.mockReturnValue({
+      close,
+      on(_event: string, listener: (payload: any) => void) {
+        listener({ code: 'FATAL' })
+      },
+    })
+
+    await createBundler().run({ watch: true })
+
+    expect(logger.error).toHaveBeenCalledWith(
+      'Rollup watcher stopped without error details'
+    )
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(process.exitCode).toBe(1)
+  })
+
   it('keeps logging normal Rollup watch errors', async () => {
     const error = new Error('build failed')
 
