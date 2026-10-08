@@ -81,7 +81,9 @@ export function isRollupErrorEvent(
     typeof event === 'object' &&
     event !== null &&
     ((event as { code?: string }).code === 'ERROR' ||
-      (event as { code?: string }).code === 'FATAL')
+      (event as { code?: string }).code === 'FATAL') &&
+    typeof (event as { error?: { message?: unknown } }).error?.message ===
+      'string'
   )
 }
 
@@ -652,12 +654,16 @@ export class Bundler {
       )
       const watcher = watch(configs)
       watcher.on('event', (e) => {
+        const fatal = (e as { code?: string }).code === 'FATAL'
         if (isRollupErrorEvent(e)) {
           logger.error(e.error.message)
-          if (e.code === 'FATAL') {
-            watcher.close()
-            process.exitCode = 1
-          }
+        } else if (fatal) {
+          // A malformed FATAL event must still stop watch mode.
+          logger.error('Rollup watcher stopped without error details')
+        }
+        if (fatal) {
+          process.exitCode = 1
+          watcher.close()
         }
       })
     } else {
