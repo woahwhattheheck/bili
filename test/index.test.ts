@@ -257,6 +257,35 @@ test('dts rebuild refreshes stale declarations from a previous output', async ()
   expect(declaration).toContain('createMessage')
 }, 20000)
 
+test('dts cleanup preserves unrelated existing declaration files', async () => {
+  const cwd = fixture('declaration-bundle')
+  const dist = path.join(cwd, 'dist')
+  removeDir(dist)
+  fs.mkdirSync(dist)
+  const preserved = path.join(dist, 'external-types.d.ts')
+  const original = 'declare interface ExternalTypes { owner: string }\n'
+  fs.writeFileSync(preserved, original)
+
+  await generate(
+    {
+      input: 'index.ts',
+      output: {
+        dir: dist,
+        dts: true,
+      },
+      resolvePlugins: {
+        typescript2: require('rollup-plugin-typescript2'),
+      },
+    },
+    { rootDir: cwd },
+    { write: true }
+  )
+
+  expect(fs.readFileSync(preserved, 'utf8')).toBe(original)
+  expect(fs.existsSync(path.join(dist, 'message.d.ts'))).toBe(false)
+  expect(fs.existsSync(path.join(dist, 'index.d.ts'))).toBe(true)
+}, 20000)
+
 test('dts bundle selects the declaration emitted for a nested entry', async () => {
   const cwd = fixture('declaration-bundle')
   const dist = path.join(cwd, 'dist')
